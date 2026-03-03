@@ -13,7 +13,7 @@ import { useUserProfile } from '../hooks/useUserProfile';
 import { useFirebaseRide } from '../hooks/useFirebaseRide';
 import { useMessageContext } from '../contexts/MessageContext';
 import { database } from '../config/firebase';
-import { ref, onValue, off } from 'firebase/database';
+import { ref, onValue, off, update, serverTimestamp } from 'firebase/database';
 import { listenToOrder, listenToDriverLocation, calculateETA } from '../services/trackingService';
 
 interface DriverComingProps {
@@ -57,6 +57,7 @@ export const DriverComing: React.FC<DriverComingProps> = ({
 
   const { orderType = 'ride', requestId, orderData = {} } = location.state || {};
   const isFood = orderType === 'food';
+  const isService = orderType === 'service';
   const orderId = requestId || currentRideId;
 
   const [driverInfo, setDriverInfo] = useState<DriverInfo | null>(null);
@@ -68,13 +69,15 @@ export const DriverComing: React.FC<DriverComingProps> = ({
   const [isRatingModalOpen, setIsRatingModalOpen] = useState(false);
   const [showCancelConfirmation, setShowCancelConfirmation] = useState(false);
   const [foodOrderDetails, setFoodOrderDetails] = useState<any>(null);
-  const stopLocationListenerRef = useRef<(() => void) | null>(null);
+  const [serviceRequestDetails, setServiceRequestDetails] = useState<any>(null);
+  const gpsListenerRef = useRef<(() => void) | null>(null);
+  const orderListenerRef = useRef<(() => void) | null>(null);
 
-  const finalDestination = isFood ? orderData.destinationAddress : destination;
-  const finalPickup = isFood ? orderData.pickupAddress : pickup;
-  const finalStops = isFood ? (orderData.stops || []) : stops;
-  const finalCarType = isFood ? orderData.deliveryMode?.label : carType;
-  const finalPrice = isFood ? orderData.totalPrice : price;
+  const finalDestination = isService ? orderData.destinationAddress : (isFood ? orderData.destinationAddress : destination);
+  const finalPickup = isService ? orderData.pickupAddress : (isFood ? orderData.pickupAddress : pickup);
+  const finalStops = isService ? (orderData.stops || []) : (isFood ? (orderData.stops || []) : stops);
+  const finalCarType = isService ? orderData.vehicleClass : (isFood ? orderData.deliveryMode?.label : carType);
+  const finalPrice = isService ? orderData.pricing?.basePrice : (isFood ? orderData.totalPrice : price);
 
   const priceCalculation = !isFood ? calculatePriceWithStops(pickup, destination, stops) : null;
   const displayPrice = isFood ? finalPrice : (priceCalculation ? getCarTypePrice(priceCalculation.totalPrice, carType) : finalPrice);
@@ -109,18 +112,21 @@ export const DriverComing: React.FC<DriverComingProps> = ({
     fetchDriverInfo();
   }, [currentRide]);
 
-  // Live order tracking with GPS-based ETA
+  // Live order tracking with GPS-based ETA - Single GPS listener pattern
   useEffect(() => {
     if (!orderId) return;
 
-    const collectionName = isFood ? 'foodOrders' : 'rides';
+    // Determine collection name based on order type
+    const collectionName = isService ? 'serviceRequests' : (isFood ? 'foodOrders' : 'rides');
 
+    // Create order listener
     const unsubscribeOrder = listenToOrder(orderId, collectionName, (order) => {
       if (!order) return;
 
       const newStatus = order.status;
       setRideStatus(newStatus);
 
+      // Handle food order specific data
       if (isFood) {
         setFoodOrderDetails(order);
         if (order.driverId && !driverInfo) {
@@ -130,63 +136,82 @@ export const DriverComing: React.FC<DriverComingProps> = ({
         }
       }
 
+      // Handle service request specific data
+      if (isService) {
+        setServiceRequestDetails(order);
+        if (order.driverId && !driverInfo) {
+          firebaseService.getDriverInfo(order.driverId).then((driver) => {
+            if (driver) setDriverInfo(driver);
+          });
+        }
+      }
+
+      // Show arrival alert
       if (newStatus === 'arrived' && !hasShownArrivalAlert) {
         setShowArrivalAlert(true);
         setHasShownArrivalAlert(true);
         setTimeout(() => setShowArrivalAlert(false), 5000);
       }
 
+      // Handle completion
       if (newStatus === 'completed' || newStatus === 'delivered') {
-        if (stopLocationListenerRef.current) {
-          stopLocationListenerRef.current();
-          stopLocationListenerRef.current = null;
+        if (gpsListenerRef.current) {
+          gpsListenerRef.current();
+          gpsListenerRef.current = null;
         }
         setStatusText("You've arrived at your destination");
-        setTimeout(() => setIsRatingModalOpen(true), 3000);
+        setTimeout(() => setIsRatingModalOpen(true), 2000);
         return;
       }
 
-      if (newStatus === 'accepted' && order.driverId) {
-        if (stopLocationListenerRef.current) {
-          stopLocationListenerRef.current();
-        }
+      // Create GPS listener ONCE when driver is assigned (status = accepted)
+      if (newStatus === 'accepted' && order.driverId && !gpsListenerRef.current) {
+        gpsListenerRef.current = listenToDriverLocation(order.driverId, (driverLoc) => {
+          // Dynamically choose target based on current status
+          const currentStatus = rideStatus;
 
-        stopLocationListenerRef.current = listenToDriverLocation(order.driverId, (driverLoc) => {
-          const pickupCoords = order.pickupLocation || { latitude: -26.2041, longitude: 28.0473 };
-          const etaMinutes = calculateETA(driverLoc, pickupCoords);
-          setStatusText(`Arriving in ${etaMinutes} min${etaMinutes !== 1 ? 's' : ''}`);
+          if (currentStatus === 'accepted' || currentStatus === 'arrived') {
+            // Target = pickup location
+            const pickupCoords = order.pickupLocation || { latitude: -26.2041, longitude: 28.0473 };
+            const etaMinutes = calculateETA(driverLoc, pickupCoords);
+
+            if (currentStatus === 'accepted') {
+              setStatusText(`Arriving in ${etaMinutes} min${etaMinutes !== 1 ? 's' : ''}`);
+            }
+          } else if (currentStatus === 'started') {
+            // Target = destination location
+            const destinationCoords = order.destinationLocation || { latitude: -26.195, longitude: 28.04 };
+            const etaMinutes = calculateETA(driverLoc, destinationCoords);
+            setStatusText(`On trip — ETA ${etaMinutes} min${etaMinutes !== 1 ? 's' : ''}`);
+          }
         });
       }
 
+      // Update status text for arrived (freeze ETA)
       if (newStatus === 'arrived') {
-        if (stopLocationListenerRef.current) {
-          stopLocationListenerRef.current();
-          stopLocationListenerRef.current = null;
-        }
         setStatusText('Your driver has arrived');
       }
 
-      if (newStatus === 'started' && order.driverId) {
-        if (stopLocationListenerRef.current) {
-          stopLocationListenerRef.current();
-        }
-
-        stopLocationListenerRef.current = listenToDriverLocation(order.driverId, (driverLoc) => {
-          const destinationCoords = order.destinationLocation || { latitude: -26.195, longitude: 28.04 };
-          const etaMinutes = calculateETA(driverLoc, destinationCoords);
-          setStatusText(`On trip — ETA ${etaMinutes} min${etaMinutes !== 1 ? 's' : ''}`);
-        });
-      }
+      // Status text for started is handled by GPS listener above
     });
 
+    // Store order listener cleanup
+    orderListenerRef.current = unsubscribeOrder;
+
     return () => {
-      unsubscribeOrder();
-      if (stopLocationListenerRef.current) {
-        stopLocationListenerRef.current();
-        stopLocationListenerRef.current = null;
+      // Cleanup order listener
+      if (orderListenerRef.current) {
+        orderListenerRef.current();
+        orderListenerRef.current = null;
+      }
+
+      // Cleanup GPS listener
+      if (gpsListenerRef.current) {
+        gpsListenerRef.current();
+        gpsListenerRef.current = null;
       }
     };
-  }, [orderId, isFood, hasShownArrivalAlert, driverInfo]);
+  }, [orderId, isFood, isService, hasShownArrivalAlert, driverInfo, rideStatus]);
 
   const handleMessageDriver = async () => {
     setIsMessagePanelOpen(true);
@@ -223,10 +248,25 @@ export const DriverComing: React.FC<DriverComingProps> = ({
   };
 
   const handleSubmitRating = async (rating: number, feedback: string) => {
-    if (!currentRideId || !currentRide?.driverId || !profile?.id) return;
+    const activeOrderId = orderId || currentRideId;
+    const activeDriverId = (isService ? serviceRequestDetails?.driverId : (isFood ? foodOrderDetails?.driverId : currentRide?.driverId));
+
+    if (!activeOrderId || !activeDriverId || !profile?.id) return;
 
     try {
-      await firebaseService.submitRating(currentRide.driverId, currentRideId, rating, feedback, profile.id);
+      // Submit rating to driver profile
+      await firebaseService.submitRating(activeDriverId, activeOrderId, rating, feedback, profile.id);
+
+      // Update order with rating info
+      const collectionName = isService ? 'serviceRequests' : (isFood ? 'foodOrders' : 'rides');
+      const orderRef = ref(database, `${collectionName}/${activeOrderId}`);
+      await update(orderRef, {
+        rated: true,
+        rating: rating,
+        ratingFeedback: feedback,
+        ratedAt: serverTimestamp()
+      });
+
       setIsRatingModalOpen(false);
       navigate('/');
     } catch (error) {
