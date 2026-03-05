@@ -27,6 +27,7 @@ import { GlobalCartProvider } from './contexts/GlobalCartContext';
 import { CurrentRideBar } from './components/CurrentRideBar';
 import { WaitingForDriverBar } from './components/WaitingForDriverBar';
 import { RatingModal } from './components/RatingModal';
+import { PageTransition } from './components/PageTransition';
 import { useUserProfile } from './hooks/useUserProfile';
 import { useFirebaseRide } from './hooks/useFirebaseRide';
 import { firebaseService } from './services/firebaseService';
@@ -262,144 +263,158 @@ function AppContent() {
             )}
           </AnimatePresence>
 
-          <Routes>
-            <Route
-              path="/"
-              element={
-                <Dashboard
-                  onSearchSelect={(address) => {
-                    if (isRideActive()) {
-                      alert('You already have an active ride.');
-                      return;
-                    }
-                    handleSearchSelect(address);
-                  }}
-                />
-              }
-            />
-            <Route
-              path="/your-route"
-              element={
-                isRideActive() ? (
-                  <Dashboard onSearchSelect={() => alert('You already have an active ride.')} />
-                ) : (
-                  <YourRoute onRouteComplete={handleRouteComplete} />
-                )
-              }
-            />
-            <Route
-              path="/rides"
-              element={<Rides />}
-            />
-            <Route
-              path="/account"
-              element={<Account />}
-            />
-            <Route
-              path="/personal-info"
-              element={<PersonalInfo />}
-            />
-            <Route
-              path="/schedule-ride"
-              element={<ScheduleRide />}
-            />
-            <Route
-              path="/schedule-your-route"
-              element={<ScheduleYourRoute />}
-            />
-            <Route
-              path="/schedule-confirm"
-              element={<ScheduleConfirm />}
-            />
-            <Route
-              path="/what-went-wrong"
-              element={<WhatWentWrong />}
-            />
-            <Route
-              path="/aletwende-send"
-              element={<AletwendeSend />}
-            />
-            <Route
-              path="/shop"
-              element={<Shop />}
-            />
-            <Route
-              path="/order-foodies/:storeId"
-              element={<OrderFoodies />}
-            />
-            <Route
-              path="/foodies-route"
-              element={<FoodiesRoute />}
-            />
-            <Route
-              path="/food-delivery"
-              element={<FoodDelivery />}
-            />
-            <Route
-              path="/select-ride"
-              element={
-                isRideActive() ? (
-                  <Dashboard onSearchSelect={() => alert('You already have an active ride.')} />
-                ) : (
-                  <SelectRide
-                    destination={appState.selectedDestination}
-                    pickup={appState.selectedPickup}
-                    stops={appState.selectedStops}
-                    onBack={handleBack}
-                    onSelectRide={handleRideSelect}
-                  />
-                )
-              }
-            />
-            <Route
-              path="/confirm-order"
-              element={
-                isRideActive() || isPending() ? (
-                  <Dashboard onSearchSelect={() => alert('You already have an active ride.')} />
-                ) : (
-                  <ConfirmOrder
-                    destination={appState.selectedDestination}
-                    pickup={appState.selectedPickup}
-                    stops={appState.selectedStops}
-                    carType={appState.selectedCarType}
-                    price={appState.selectedPrice}
-                    onBack={handleBack}
-                    onRideConfirmed={handleConfirmOrder}
-                    onRideCreated={handleRideCreated}
-                  />
-                )
-              }
-            />
-            <Route
-              path="/waiting-for-driver"
-              element={
-                <WaitingForDriver
-                  destination={appState.selectedDestination}
-                  pickup={appState.selectedPickup}
-                  stops={appState.selectedStops}
-                  carType={appState.selectedCarType}
-                  price={appState.selectedPrice}
-                  currentRideId={appState.currentRideId}
-                  onCancel={handleCancelToHome}
-                  onDriverFound={handleDriverFound}
-                />
-              }
-            />
-            <Route
-              path="/driver-coming"
-              element={
-                <DriverComing
-                  destination={appState.selectedDestination}
-                  pickup={appState.selectedPickup}
-                  stops={appState.selectedStops}
-                  carType={appState.selectedCarType}
-                  price={appState.selectedPrice}
-                  currentRideId={appState.currentRideId}
-                  onBack={handleCancelToHome}
-                />
-              }
-            />
-          </Routes>
+          <AnimatePresence mode="wait">
+            <Routes location={location} key={location.pathname}>
+              <Route
+                path="/"
+                element={
+                  <PageTransition>
+                    <Dashboard
+                      onSearchSelect={(address) => {
+                        if (isRideActive()) {
+                          alert('You already have an active ride.');
+                          return;
+                        }
+                        handleSearchSelect(address);
+                      }}
+                    />
+                  </PageTransition>
+                }
+              />
+              <Route
+                path="/your-route"
+                element={
+                  <PageTransition>
+                    {isRideActive() ? (
+                      <Dashboard onSearchSelect={() => alert('You already have an active ride.')} />
+                    ) : (
+                      <YourRoute onRouteComplete={handleRouteComplete} />
+                    )}
+                  </PageTransition>
+                }
+              />
+              <Route
+                path="/rides"
+                element={<PageTransition><Rides /></PageTransition>}
+              />
+              <Route
+                path="/account"
+                element={<PageTransition><Account /></PageTransition>}
+              />
+              <Route
+                path="/personal-info"
+                element={<PageTransition><PersonalInfo /></PageTransition>}
+              />
+              <Route
+                path="/schedule-ride"
+                element={<PageTransition><ScheduleRide /></PageTransition>}
+              />
+              <Route
+                path="/schedule-your-route"
+                element={<PageTransition><ScheduleYourRoute /></PageTransition>}
+              />
+              <Route
+                path="/schedule-confirm"
+                element={<PageTransition><ScheduleConfirm /></PageTransition>}
+              />
+              <Route
+                path="/what-went-wrong"
+                element={<PageTransition><WhatWentWrong /></PageTransition>}
+              />
+              <Route
+                path="/aletwende-send"
+                element={<PageTransition><AletwendeSend /></PageTransition>}
+              />
+              <Route
+                path="/shop"
+                element={<PageTransition><Shop /></PageTransition>}
+              />
+              <Route
+                path="/order-foodies/:storeId"
+                element={<PageTransition><OrderFoodies /></PageTransition>}
+              />
+              <Route
+                path="/foodies-route"
+                element={<PageTransition><FoodiesRoute /></PageTransition>}
+              />
+              <Route
+                path="/food-delivery"
+                element={<PageTransition><FoodDelivery /></PageTransition>}
+              />
+              <Route
+                path="/select-ride"
+                element={
+                  <PageTransition>
+                    {isRideActive() ? (
+                      <Dashboard onSearchSelect={() => alert('You already have an active ride.')} />
+                    ) : (
+                      <SelectRide
+                        destination={appState.selectedDestination}
+                        pickup={appState.selectedPickup}
+                        stops={appState.selectedStops}
+                        onBack={handleBack}
+                        onSelectRide={handleRideSelect}
+                      />
+                    )}
+                  </PageTransition>
+                }
+              />
+              <Route
+                path="/confirm-order"
+                element={
+                  <PageTransition>
+                    {isRideActive() || isPending() ? (
+                      <Dashboard onSearchSelect={() => alert('You already have an active ride.')} />
+                    ) : (
+                      <ConfirmOrder
+                        destination={appState.selectedDestination}
+                        pickup={appState.selectedPickup}
+                        stops={appState.selectedStops}
+                        carType={appState.selectedCarType}
+                        price={appState.selectedPrice}
+                        onBack={handleBack}
+                        onRideConfirmed={handleConfirmOrder}
+                        onRideCreated={handleRideCreated}
+                      />
+                    )}
+                  </PageTransition>
+                }
+              />
+              <Route
+                path="/waiting-for-driver"
+                element={
+                  <PageTransition>
+                    <WaitingForDriver
+                      destination={appState.selectedDestination}
+                      pickup={appState.selectedPickup}
+                      stops={appState.selectedStops}
+                      carType={appState.selectedCarType}
+                      price={appState.selectedPrice}
+                      currentRideId={appState.currentRideId}
+                      onCancel={handleCancelToHome}
+                      onDriverFound={handleDriverFound}
+                    />
+                  </PageTransition>
+                }
+              />
+              <Route
+                path="/driver-coming"
+                element={
+                  <PageTransition>
+                    <DriverComing
+                      destination={appState.selectedDestination}
+                      pickup={appState.selectedPickup}
+                      stops={appState.selectedStops}
+                      carType={appState.selectedCarType}
+                      price={appState.selectedPrice}
+                      currentRideId={appState.currentRideId}
+                      onBack={handleCancelToHome}
+                    />
+                  </PageTransition>
+                }
+              />
+            </Routes>
+          </AnimatePresence>
 
           {showRatingModal && driverInfo && (
             <RatingModal

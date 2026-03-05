@@ -1,6 +1,6 @@
-import React, { useState, useRef } from 'react';
-import { motion, useMotionValue, useTransform, PanInfo, AnimatePresence } from 'framer-motion';
-import { X, Users } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { motion, useMotionValue, useSpring, useTransform, PanInfo } from 'framer-motion';
+import { Users } from 'lucide-react';
 
 interface Car {
   id: string;
@@ -30,6 +30,9 @@ interface RideFilterBottomSheetProps {
 
 type FilterType = 'recommended' | 'faster' | 'cheaper';
 
+const MIN_HEIGHT = 120;
+const MAX_HEIGHT = 650;
+
 export const RideFilterBottomSheet: React.FC<RideFilterBottomSheetProps> = ({
   cars,
   selectedCar,
@@ -37,12 +40,16 @@ export const RideFilterBottomSheet: React.FC<RideFilterBottomSheetProps> = ({
   promo,
   onPromoClick
 }) => {
-  const [height, setHeight] = useState(400);
   const [filter, setFilter] = useState<FilterType>('recommended');
-  const panelRef = useRef<HTMLDivElement>(null);
-  const y = useMotionValue(0);
 
-  const backgroundOpacity = useTransform(y, [-200, 0], [0.3, 0.1]);
+  const rawHeight = useMotionValue(400);
+  const springHeight = useSpring(rawHeight, {
+    stiffness: 300,
+    damping: 35,
+    mass: 0.8,
+  });
+
+  const backgroundOpacity = useTransform(springHeight, [MIN_HEIGHT, MAX_HEIGHT], [0.05, 0.25]);
 
   const getSortedCars = (): Car[] => {
     const sorted = [...cars];
@@ -58,28 +65,22 @@ export const RideFilterBottomSheet: React.FC<RideFilterBottomSheetProps> = ({
     return sorted;
   };
 
-  const handleDrag = (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
-    const newHeight = height - info.delta.y;
-    const clampedHeight = Math.max(120, Math.min(650, newHeight));
-    setHeight(clampedHeight);
+  const handleDrag = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+    const newHeight = rawHeight.get() - info.delta.y;
+    const clamped = Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, newHeight));
+    rawHeight.set(clamped);
   };
 
-  const handleDragEnd = (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+  const handleDragEnd = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
     const velocity = info.velocity.y;
-    let targetHeight = height;
+    const currentHeight = rawHeight.get();
 
-    if (Math.abs(velocity) > 300) {
-      if (velocity > 0) {
-        targetHeight = 120;
-      } else {
-        targetHeight = 650;
-      }
+    if (Math.abs(velocity) > 600) {
+      rawHeight.set(velocity < 0 ? MAX_HEIGHT : MIN_HEIGHT);
     } else {
-      const midPoint = (120 + 650) / 2;
-      targetHeight = height > midPoint ? 650 : 120;
+      // Stay where released
+      rawHeight.set(Math.max(MIN_HEIGHT, Math.min(MAX_HEIGHT, currentHeight)));
     }
-
-    setHeight(targetHeight);
   };
 
   const sortedCars = getSortedCars();
@@ -91,27 +92,26 @@ export const RideFilterBottomSheet: React.FC<RideFilterBottomSheetProps> = ({
         style={{ opacity: backgroundOpacity }}
       />
       <motion.div
-        ref={panelRef}
-        className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl z-20"
-        style={{ height }}
+        className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl z-20 will-change-transform"
+        style={{ height: springHeight }}
         initial={{ y: 100, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        transition={{ type: 'spring', damping: 35, stiffness: 300, mass: 0.5 }}
+        transition={{ type: 'spring', damping: 30, stiffness: 260, mass: 0.6 }}
       >
         <motion.div
-          className="w-full h-6 flex justify-center items-center cursor-grab active:cursor-grabbing"
+          className="w-full h-8 flex justify-center items-center cursor-grab active:cursor-grabbing touch-none"
           drag="y"
           dragConstraints={{ top: 0, bottom: 0 }}
-          dragElastic={0.05}
-          dragTransition={{ bounceStiffness: 600, bounceDamping: 40 }}
+          dragElastic={0}
+          dragMomentum={false}
           onDrag={handleDrag}
           onDragEnd={handleDragEnd}
-          whileTap={{ scale: 1.05 }}
+          whileTap={{ scale: 1.02 }}
         >
-          <div className="w-12 h-1 bg-gray-300 rounded-full" />
+          <div className="w-10 h-1 bg-gray-300 rounded-full" />
         </motion.div>
 
-        <div className="px-4 pb-4 overflow-hidden" style={{ height: height - 24 }}>
+        <div className="px-4 pb-4 overflow-hidden" style={{ height: 'calc(100% - 32px)' }}>
           <div className="space-y-4">
             {/* Promo Banner */}
             <motion.button
@@ -121,7 +121,7 @@ export const RideFilterBottomSheet: React.FC<RideFilterBottomSheetProps> = ({
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
-                  <span className="text-lg font-semibold">✓ {promo.discount}% promo applied</span>
+                  <span className="text-lg font-semibold">&#x2713; {promo.discount}% promo applied</span>
                 </div>
                 <span className="text-sm opacity-90">i</span>
               </div>
@@ -146,7 +146,7 @@ export const RideFilterBottomSheet: React.FC<RideFilterBottomSheetProps> = ({
             </div>
 
             {/* Car Selection */}
-            <div className="space-y-3 overflow-y-auto pr-2" style={{ maxHeight: height - 180 }}>
+            <div className="space-y-3 overflow-y-auto pr-2" style={{ maxHeight: 'calc(100% - 140px)' }}>
               {sortedCars.map((car, index) => (
                 <motion.button
                   key={car.id}

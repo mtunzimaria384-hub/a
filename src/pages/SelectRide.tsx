@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { motion, AnimatePresence, PanInfo } from 'framer-motion';
+import { motion, AnimatePresence, PanInfo, useMotionValue, useSpring, useTransform } from 'framer-motion';
 import { X, Plus, Calendar, Users, User, Briefcase, ChevronDown } from 'lucide-react';
 import { MapBackground } from '../components/MapBackground';
 import { PromoDetailsPanel } from '../components/PromoDetailsPanel';
@@ -19,9 +19,9 @@ interface SelectRideProps {
 
 type FilterTab = 'recommended' | 'faster' | 'cheaper';
 
-const PANEL_MIN_HEIGHT = 36;
-const PANEL_MAX_HEIGHT = 85;
-const SNAP_THRESHOLD = 65;
+const PANEL_MIN_VH = 36;
+const PANEL_MAX_VH = 85;
+const EXPAND_THRESHOLD_VH = 55;
 
 export const SelectRide: React.FC<SelectRideProps> = ({
   destination,
@@ -58,10 +58,26 @@ export const SelectRide: React.FC<SelectRideProps> = ({
   const [selectedCar, setSelectedCar] = useState<any>(displayVehicles[0] || carsWithPrices[0]);
   const [showPromoDetails, setShowPromoDetails] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState<FilterTab>('recommended');
-  const [panelHeight, setPanelHeight] = useState(PANEL_MIN_HEIGHT);
   const [profileToggle, setProfileToggle] = useState<'personal' | 'business'>('personal');
 
-  const isExpanded = panelHeight > SNAP_THRESHOLD;
+  // Spring-driven panel height (in vh)
+  const rawPanelVh = useMotionValue(PANEL_MIN_VH);
+  const springPanelVh = useSpring(rawPanelVh, {
+    stiffness: 300,
+    damping: 35,
+    mass: 0.8,
+  });
+  const panelHeightStyle = useTransform(springPanelVh, (v) => `${v}vh`);
+
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  // Track expansion state from spring value
+  React.useEffect(() => {
+    const unsubscribe = springPanelVh.on('change', (latest) => {
+      setIsExpanded(latest > EXPAND_THRESHOLD_VH);
+    });
+    return unsubscribe;
+  }, [springPanelVh]);
 
   // Load fleet options for logistics services
   useEffect(() => {
@@ -95,29 +111,21 @@ export const SelectRide: React.FC<SelectRideProps> = ({
     rideAreas: 'Gauteng'
   };
 
-  const handleDrag = (event: any, info: PanInfo) => {
+  const handleDrag = (_event: any, info: PanInfo) => {
     const windowHeight = window.innerHeight;
-    const dragDelta = -info.offset.y;
-    const dragPercent = (dragDelta / windowHeight) * 100;
-    const newHeight = Math.max(PANEL_MIN_HEIGHT, Math.min(PANEL_MAX_HEIGHT, PANEL_MIN_HEIGHT + dragPercent));
-    setPanelHeight(newHeight);
+    const deltaVh = (-info.delta.y / windowHeight) * 100;
+    const newVh = rawPanelVh.get() + deltaVh;
+    rawPanelVh.set(Math.max(PANEL_MIN_VH, Math.min(PANEL_MAX_VH, newVh)));
   };
 
-  const handleDragEnd = (event: any, info: PanInfo) => {
+  const handleDragEnd = (_event: any, info: PanInfo) => {
     const velocity = -info.velocity.y;
 
-    if (Math.abs(velocity) > 500) {
-      if (velocity > 0) {
-        setPanelHeight(PANEL_MAX_HEIGHT);
-      } else {
-        setPanelHeight(PANEL_MIN_HEIGHT);
-      }
+    if (Math.abs(velocity) > 600) {
+      rawPanelVh.set(velocity > 0 ? PANEL_MAX_VH : PANEL_MIN_VH);
     } else {
-      if (panelHeight > SNAP_THRESHOLD) {
-        setPanelHeight(PANEL_MAX_HEIGHT);
-      } else {
-        setPanelHeight(PANEL_MIN_HEIGHT);
-      }
+      // Stay where released - spring settles smoothly
+      rawPanelVh.set(Math.max(PANEL_MIN_VH, Math.min(PANEL_MAX_VH, rawPanelVh.get())));
     }
   };
 
@@ -233,23 +241,14 @@ export const SelectRide: React.FC<SelectRideProps> = ({
 
       <motion.div
         ref={panelRef}
-        className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl z-20 flex flex-col"
-        drag="y"
-        dragConstraints={{ top: 0, bottom: 0 }}
-        dragElastic={0}
-        onDrag={handleDrag}
-        onDragEnd={handleDragEnd}
-        animate={{
-          height: `${panelHeight}vh`
-        }}
-        transition={{
-          type: 'spring',
-          damping: 30,
-          stiffness: 300
-        }}
+        className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl z-20 flex flex-col will-change-transform"
         style={{
+          height: panelHeightStyle,
           touchAction: 'none'
         }}
+        initial={{ y: 100, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ type: 'spring', damping: 30, stiffness: 260, mass: 0.6 }}
       >
         <motion.div
           className="bg-blue-600 text-white w-full px-4 py-3 flex items-center justify-center gap-2 rounded-t-3xl flex-shrink-0 cursor-pointer"
@@ -264,9 +263,18 @@ export const SelectRide: React.FC<SelectRideProps> = ({
           <ChevronDown size={16} />
         </motion.div>
 
-        <div className="w-full pt-3 pb-2 flex justify-center cursor-grab active:cursor-grabbing flex-shrink-0">
-          <div className="w-12 h-1 bg-gray-300 rounded-full" />
-        </div>
+        <motion.div
+          className="w-full pt-3 pb-2 flex justify-center cursor-grab active:cursor-grabbing flex-shrink-0 touch-none"
+          drag="y"
+          dragConstraints={{ top: 0, bottom: 0 }}
+          dragElastic={0}
+          dragMomentum={false}
+          onDrag={handleDrag}
+          onDragEnd={handleDragEnd}
+          whileTap={{ scale: 1.02 }}
+        >
+          <div className="w-10 h-1 bg-gray-300 rounded-full" />
+        </motion.div>
 
         <AnimatePresence>
           {isExpanded && (

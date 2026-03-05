@@ -1,5 +1,5 @@
- import React, { useState, useRef, useCallback } from 'react';
-import { motion, useMotionValue, useTransform, PanInfo } from 'framer-motion';
+import React, { useRef, useEffect } from 'react';
+import { motion, useMotionValue, useSpring, useTransform, PanInfo } from 'framer-motion';
 
 interface DraggablePanelProps {
   children: React.ReactNode;
@@ -17,103 +17,107 @@ export const DraggablePanel: React.FC<DraggablePanelProps> = ({
   initialHeight = 400,
   maxHeight = 600,
   minHeight = 120,
-  snapPoints = [],
   className = '',
   onHeightChange,
   onSnapPointChange
 }) => {
-  const screenHeight = typeof window !== 'undefined' ? window.innerHeight : 800;
-  const defaultSnapPoints = snapPoints.length > 0 ? snapPoints : [
-    Math.round(screenHeight * 0.25),
-    Math.round(screenHeight * 0.6),
-    screenHeight - 80
-  ];
-
-  const [height, setHeight] = useState(initialHeight);
-  const [currentSnapIndex, setCurrentSnapIndex] = useState(1);
   const panelRef = useRef<HTMLDivElement>(null);
-  const y = useMotionValue(0);
 
-  const backgroundOpacity = useTransform(y, [-200, 0], [0.3, 0.1]);
+  // Raw motion value tracks the drag in real-time
+  const rawHeight = useMotionValue(initialHeight);
 
-  const findClosestSnapPoint = useCallback((currentHeight: number) => {
-    let closest = 0;
-    let minDistance = Math.abs(defaultSnapPoints[0] - currentHeight);
+  // Spring-driven height for smooth, physics-based animation
+  const springHeight = useSpring(rawHeight, {
+    stiffness: 300,
+    damping: 35,
+    mass: 0.8,
+  });
 
-    defaultSnapPoints.forEach((point, index) => {
-      const distance = Math.abs(point - currentHeight);
-      if (distance < minDistance) {
-        minDistance = distance;
-        closest = index;
-      }
+  // Background overlay opacity based on height
+  const backgroundOpacity = useTransform(
+    springHeight,
+    [minHeight, maxHeight],
+    [0.05, 0.25]
+  );
+
+  // Snap index derived from height for content visibility toggling
+  const midPoint = (minHeight + maxHeight) / 2;
+
+  // Report height changes back to parent
+  useEffect(() => {
+    const unsubscribe = springHeight.on('change', (latest) => {
+      onHeightChange?.(latest);
+      const snapIdx = latest > midPoint ? 1 : 0;
+      onSnapPointChange?.(snapIdx);
     });
+    return unsubscribe;
+  }, [springHeight, midPoint, onHeightChange, onSnapPointChange]);
 
-    return closest;
-  }, [defaultSnapPoints]);
-
-  const handleDrag = (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
-    const newHeight = height - info.delta.y;
-    const clampedHeight = Math.max(minHeight, Math.min(maxHeight, newHeight));
-    setHeight(clampedHeight);
-    onHeightChange?.(clampedHeight);
+  const handleDrag = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+    // Subtract delta.y because dragging up (negative y) should increase height
+    const newHeight = rawHeight.get() - info.delta.y;
+    const clamped = Math.max(minHeight, Math.min(maxHeight, newHeight));
+    rawHeight.set(clamped);
   };
 
-  const handleDragEnd = (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+  const handleDragEnd = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
     const velocity = info.velocity.y;
-    let targetHeight = height;
+    const currentHeight = rawHeight.get();
 
-    if (Math.abs(velocity) > 300) {
-      if (velocity > 0) {
-        const currentIndex = findClosestSnapPoint(height);
-        targetHeight = currentIndex > 0 ? defaultSnapPoints[currentIndex - 1] : defaultSnapPoints[0];
+    // Only snap if the user flings with significant velocity
+    if (Math.abs(velocity) > 600) {
+      if (velocity < 0) {
+        // Flick up -> expand fully
+        rawHeight.set(maxHeight);
       } else {
-        const currentIndex = findClosestSnapPoint(height);
-        targetHeight = currentIndex < defaultSnapPoints.length - 1
-          ? defaultSnapPoints[currentIndex + 1]
-          : defaultSnapPoints[defaultSnapPoints.length - 1];
+        // Flick down -> collapse fully
+        rawHeight.set(minHeight);
       }
     } else {
-      const closestIndex = findClosestSnapPoint(height);
-      targetHeight = defaultSnapPoints[closestIndex];
+      // Otherwise, the panel stays exactly where the user released it
+      // The spring physics will settle it smoothly at the current position
+      rawHeight.set(Math.max(minHeight, Math.min(maxHeight, currentHeight)));
     }
-
-    targetHeight = Math.max(minHeight, Math.min(maxHeight, targetHeight));
-    setHeight(targetHeight);
-    const snapIndex = findClosestSnapPoint(targetHeight);
-    setCurrentSnapIndex(snapIndex);
-    onHeightChange?.(targetHeight);
-    onSnapPointChange?.(snapIndex);
   };
 
   return (
     <>
+      {/* Overlay */}
       <motion.div
         className="fixed inset-0 bg-black pointer-events-none z-10"
         style={{ opacity: backgroundOpacity }}
       />
+
+      {/* Panel */}
       <motion.div
         ref={panelRef}
-        className={`fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl z-20 ${className}`}
-        style={{ height }}
+        className={`fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl z-20 will-change-transform ${className}`}
+        style={{ height: springHeight }}
         initial={{ y: 100, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        transition={{ type: "spring", damping: 35, stiffness: 300, mass: 0.5 }}
+        transition={{ type: 'spring', damping: 30, stiffness: 260, mass: 0.6 }}
       >
+        {/* Drag handle */}
         <motion.div
-          className="w-full h-6 flex justify-center items-center cursor-grab active:cursor-grabbing"
+          className="w-full h-8 flex justify-center items-center cursor-grab active:cursor-grabbing touch-none"
           drag="y"
           dragConstraints={{ top: 0, bottom: 0 }}
-          dragElastic={0.05}
-          dragTransition={{ bounceStiffness: 600, bounceDamping: 40 }}
+          dragElastic={0}
+          dragMomentum={false}
           onDrag={handleDrag}
           onDragEnd={handleDragEnd}
-          whileTap={{ scale: 1.05 }}
+          whileTap={{ scale: 1.02 }}
         >
-          <div className="w-12 h-1 bg-gray-300 rounded-full" />
+          <div className="w-10 h-1 bg-gray-300 rounded-full" />
         </motion.div>
-        <div className="px-4 pb-4 overflow-hidden" style={{ height: height - 24 }}>
+
+        {/* Content */}
+        <motion.div
+          className="px-4 pb-4 overflow-hidden"
+          style={{ height: useTransform(springHeight, (h) => h - 32) }}
+        >
           {children}
-        </div>
+        </motion.div>
       </motion.div>
     </>
   );

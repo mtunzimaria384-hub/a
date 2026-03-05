@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, PanInfo } from 'framer-motion';
 import { X } from 'lucide-react';
 import { useFoodOrderSession } from '../contexts/FoodOrderSession';
 
@@ -65,11 +65,19 @@ export const FoodSelectionModal: React.FC<FoodSelectionModalProps> = ({
           />
 
           <motion.div
-            className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl z-50 max-h-[80vh] overflow-y-auto"
+            className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl z-50 max-h-[80vh] overflow-y-auto will-change-transform"
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
-            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            transition={{ type: 'spring', damping: 28, stiffness: 300, mass: 0.8 }}
+            drag="y"
+            dragConstraints={{ top: 0 }}
+            dragElastic={0.2}
+            onDragEnd={(_e: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+              if (info.offset.y > 100 || info.velocity.y > 300) {
+                onClose();
+              }
+            }}
           >
             <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between rounded-t-3xl">
               <h2 className="text-xl font-bold text-gray-900">{title}</h2>
