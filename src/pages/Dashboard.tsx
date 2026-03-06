@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, useMotionValue, useTransform } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Search, Calendar, Clock, Package, X } from 'lucide-react';
 import { DraggablePanel } from '../components/DraggablePanel';
 import { ScrollableSection } from '../components/ScrollableSection';
@@ -17,31 +17,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSearchSelect }) => {
   const navigate = useNavigate();
   const [showPromo, setShowPromo] = useState(true);
   const [panelHeight, setPanelHeight] = useState(450);
-  const [dragProgress, setDragProgress] = useState(1);
   const { isRideActive, rideStatus } = useRideContext();
 
   const maxPanelHeight = 600;
   const minPanelHeight = 175;
-
-  // Motion value for drag progress (0 = collapsed, 1 = expanded)
-  const dragProgressMotion = useMotionValue(1);
-
-  // Animated values based on drag progress
-  const headerOpacity = useTransform(dragProgressMotion, [0, 0.4], [0, 1]);
-  const headerY = useTransform(dragProgressMotion, [0, 0.4], [-10, 0]);
-  const buttonsOpacity = useTransform(dragProgressMotion, [0.2, 0.5], [0, 1]);
-  const buttonsY = useTransform(dragProgressMotion, [0.2, 0.5], [10, 0]);
-  
-  // Search box animation: moves up as panel collapses (progress goes from 1 to 0)
-  // When expanded (progress=1): search is in normal position (translateY = 0)
-  // When collapsed (progress=0): search moves up to where header was (translateY = -180)
-  const searchY = useTransform(dragProgressMotion, [0, 1], [-180, 0]);
-  const recentSearchesOpacity = useTransform(dragProgressMotion, [0.3, 0.6], [0, 1]);
-
-  const handleDragProgressChange = (progress: number) => {
-    setDragProgress(progress);
-    dragProgressMotion.set(progress);
-  };
 
   const handleNavigationBlock = (destination: string) => {
     const message = rideStatus === 'pending'
@@ -140,28 +119,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSearchSelect }) => {
         maxHeight={maxPanelHeight}
         minHeight={minPanelHeight}
         onHeightChange={setPanelHeight}
-        onDragProgressChange={handleDragProgressChange}
       >
         <div className="relative">
-          {/* Let's go places header - fades out as panel compresses */}
-          <motion.h1
-            className="text-3xl font-bold text-gray-900 mt-4 mb-6"
-            style={{
-              opacity: headerOpacity,
-              y: headerY
-            }}
-          >
+          {/* Let's go places header - stays in place */}
+          <h1 className="text-3xl font-bold text-gray-900 mt-4 mb-6">
             Let's go places.
-          </motion.h1>
+          </h1>
 
-          {/* Service buttons - fade out as panel compresses */}
-          <motion.div
-            className="grid grid-cols-3 gap-4 mb-6"
-            style={{
-              opacity: buttonsOpacity,
-              y: buttonsY
-            }}
-          >
+          {/* Service buttons - stays in place */}
+          <div className="grid grid-cols-3 gap-4 mb-6">
             {serviceButtons.map((service, index) => (
               <motion.button
                 key={service.id}
@@ -183,13 +149,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSearchSelect }) => {
                 <p className="text-xs text-gray-600 mt-1">{service.description}</p>
               </motion.button>
             ))}
-          </motion.div>
+          </div>
 
-          {/* Search box - animates upward as panel collapses */}
-          <motion.div
-            className="relative z-10"
-            style={{ y: searchY }}
-          >
+          {/* Search box - stays in place */}
+          <div className="relative z-10">
             <div className="flex items-center bg-gray-100 rounded-xl overflow-hidden">
               <div className="flex-1 relative">
                 <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
@@ -208,13 +171,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSearchSelect }) => {
                 <Calendar className="text-gray-600" size={20} />
               </button>
             </div>
-          </motion.div>
+          </div>
 
-          {/* Recent searches - fade out as panel compresses */}
-          <motion.div
-            className="mt-4"
-            style={{ opacity: recentSearchesOpacity }}
-          >
+          {/* Recent searches - stays in place */}
+          <div className="mt-4">
             <ScrollableSection maxHeight="max-h-40">
               <div className="space-y-2">
                 {recentSearches.map((search, index) => (
@@ -236,7 +196,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSearchSelect }) => {
                 ))}
               </div>
             </ScrollableSection>
-          </motion.div>
+          </div>
         </div>
       </DraggablePanel>
 

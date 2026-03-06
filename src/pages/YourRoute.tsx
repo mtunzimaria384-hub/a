@@ -296,11 +296,9 @@ export const YourRoute: React.FC<YourRouteProps> = ({ onRouteComplete }) => {
         <div className="flex items-center justify-between">
           <button
             onClick={() => {
-              if (serviceType === 'ride') {
-                navigate('/');
-              } else {
-                navigate('/aletwende-send');
-              }
+              // Always use navigate(-1) to go back in the stack
+              // This prevents the loop between YourRoute and AletwendeSend
+              navigate(-1);
             }}
             className="w-10 h-10 flex items-center justify-center hover:bg-gray-100 rounded-full transition-colors"
           >
