@@ -1,15 +1,16 @@
 import React, { useRef, useEffect } from 'react';
-import { motion, useMotionValue, useSpring, useTransform, PanInfo } from 'framer-motion';
+import { motion, useMotionValue, useSpring, useTransform, PanInfo, MotionValue } from 'framer-motion';
 
 interface DraggablePanelProps {
   children: React.ReactNode;
   initialHeight?: number;
   maxHeight?: number;
   minHeight?: number;
-  snapPoints?: number[];
   className?: string;
   onHeightChange?: (height: number) => void;
   onSnapPointChange?: (snapIndex: number) => void;
+  onDragProgressChange?: (progress: number) => void;
+  dragProgress?: MotionValue<number>;
 }
 
 export const DraggablePanel: React.FC<DraggablePanelProps> = ({
@@ -19,7 +20,9 @@ export const DraggablePanel: React.FC<DraggablePanelProps> = ({
   minHeight = 120,
   className = '',
   onHeightChange,
-  onSnapPointChange
+  onSnapPointChange,
+  onDragProgressChange,
+  dragProgress: externalDragProgress
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -33,6 +36,16 @@ export const DraggablePanel: React.FC<DraggablePanelProps> = ({
     mass: 0.8,
   });
 
+  // Internal drag progress (0 = collapsed, 1 = expanded)
+  const internalDragProgress = useTransform(
+    springHeight,
+    [minHeight, maxHeight],
+    [0, 1]
+  );
+
+  // Use external or internal drag progress
+  const dragProgress = externalDragProgress || internalDragProgress;
+
   // Background overlay opacity based on height
   const backgroundOpacity = useTransform(
     springHeight,
@@ -43,15 +56,19 @@ export const DraggablePanel: React.FC<DraggablePanelProps> = ({
   // Snap index derived from height for content visibility toggling
   const midPoint = (minHeight + maxHeight) / 2;
 
-  // Report height changes back to parent
+  // Report height and progress changes back to parent
   useEffect(() => {
     const unsubscribe = springHeight.on('change', (latest) => {
       onHeightChange?.(latest);
       const snapIdx = latest > midPoint ? 1 : 0;
       onSnapPointChange?.(snapIdx);
+      
+      // Calculate and report progress (0 = collapsed, 1 = expanded)
+      const progress = (latest - minHeight) / (maxHeight - minHeight);
+      onDragProgressChange?.(Math.max(0, Math.min(1, progress)));
     });
     return unsubscribe;
-  }, [springHeight, midPoint, onHeightChange, onSnapPointChange]);
+  }, [springHeight, midPoint, minHeight, maxHeight, onHeightChange, onSnapPointChange, onDragProgressChange]);
 
   const handleDrag = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
     // Subtract delta.y because dragging up (negative y) should increase height

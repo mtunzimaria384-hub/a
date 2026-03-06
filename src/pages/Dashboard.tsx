@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, useMotionValue, useTransform } from 'framer-motion';
 import { Search, Calendar, Clock, Package, X } from 'lucide-react';
 import { DraggablePanel } from '../components/DraggablePanel';
 import { ScrollableSection } from '../components/ScrollableSection';
 import { BottomNavigation } from '../components/BottomNavigation';
 import { MapBackground } from '../components/MapBackground';
-import { AnimatedSearchHeader } from '../components/AnimatedSearchHeader';
 import { recentSearches } from '../data/mockData';
 import { useRideContext } from '../contexts/RideContext';
 
@@ -18,11 +17,31 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSearchSelect }) => {
   const navigate = useNavigate();
   const [showPromo, setShowPromo] = useState(true);
   const [panelHeight, setPanelHeight] = useState(450);
-  const [snapIndex, setSnapIndex] = useState(1);
+  const [dragProgress, setDragProgress] = useState(1);
   const { isRideActive, rideStatus } = useRideContext();
 
   const maxPanelHeight = 600;
   const minPanelHeight = 175;
+
+  // Motion value for drag progress (0 = collapsed, 1 = expanded)
+  const dragProgressMotion = useMotionValue(1);
+
+  // Animated values based on drag progress
+  const headerOpacity = useTransform(dragProgressMotion, [0, 0.4], [0, 1]);
+  const headerY = useTransform(dragProgressMotion, [0, 0.4], [-10, 0]);
+  const buttonsOpacity = useTransform(dragProgressMotion, [0.2, 0.5], [0, 1]);
+  const buttonsY = useTransform(dragProgressMotion, [0.2, 0.5], [10, 0]);
+  
+  // Search box animation: moves up as panel collapses (progress goes from 1 to 0)
+  // When expanded (progress=1): search is in normal position (translateY = 0)
+  // When collapsed (progress=0): search moves up to where header was (translateY = -180)
+  const searchY = useTransform(dragProgressMotion, [0, 1], [-180, 0]);
+  const recentSearchesOpacity = useTransform(dragProgressMotion, [0.3, 0.6], [0, 1]);
+
+  const handleDragProgressChange = (progress: number) => {
+    setDragProgress(progress);
+    dragProgressMotion.set(progress);
+  };
 
   const handleNavigationBlock = (destination: string) => {
     const message = rideStatus === 'pending'
@@ -58,10 +77,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSearchSelect }) => {
 
   const handleAletwendeClick = () => {
     navigate('/aletwende-send');
-  };
-
-  const handleFoodiesClick = () => {
-    navigate('/shop');
   };
 
   const serviceButtons = [
@@ -125,31 +140,27 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSearchSelect }) => {
         maxHeight={maxPanelHeight}
         minHeight={minPanelHeight}
         onHeightChange={setPanelHeight}
-        onSnapPointChange={setSnapIndex}
+        onDragProgressChange={handleDragProgressChange}
       >
-        <div className="space-y-6">
+        <div className="relative">
           {/* Let's go places header - fades out as panel compresses */}
           <motion.h1
-            className="text-3xl font-bold text-gray-900 mt-4"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{
-              opacity: snapIndex > 0 ? 1 : 0,
-              y: snapIndex > 0 ? 0 : -10
+            className="text-3xl font-bold text-gray-900 mt-4 mb-6"
+            style={{
+              opacity: headerOpacity,
+              y: headerY
             }}
-            transition={{ duration: 0.3 }}
           >
             Let's go places.
           </motion.h1>
 
-          {/* Service buttons */}
+          {/* Service buttons - fade out as panel compresses */}
           <motion.div
-            className="grid grid-cols-3 gap-4"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{
-              opacity: snapIndex > 0 ? 1 : 0,
-              y: snapIndex > 0 ? 0 : 10
+            className="grid grid-cols-3 gap-4 mb-6"
+            style={{
+              opacity: buttonsOpacity,
+              y: buttonsY
             }}
-            transition={{ delay: 0.1, duration: 0.3 }}
           >
             {serviceButtons.map((service, index) => (
               <motion.button
@@ -174,35 +185,36 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSearchSelect }) => {
             ))}
           </motion.div>
 
-          {/* Search box - only visible when panel is full height */}
+          {/* Search box - animates upward as panel collapses */}
           <motion.div
-            className={`space-y-4 ${snapIndex <= 0 ? 'hidden' : ''}`}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{
-              opacity: snapIndex > 0 ? 1 : 0,
-              y: snapIndex > 0 ? 0 : 20
-            }}
-            transition={{ delay: 0.2, duration: 0.3 }}
+            className="relative z-10"
+            style={{ y: searchY }}
           >
-            <div className="flex space-x-3">
+            <div className="flex items-center bg-gray-100 rounded-xl overflow-hidden">
               <div className="flex-1 relative">
                 <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
                 <button
                   onClick={handleWhereToClick}
-                  className="w-full bg-gray-100 rounded-xl pl-12 pr-4 py-4 text-left text-gray-500 hover:bg-gray-200 transition-colors"
+                  className="w-full pl-12 pr-4 py-4 text-left text-gray-500 hover:bg-gray-200 transition-colors bg-transparent"
                 >
                   Where to?
                 </button>
               </div>
+              {/* Schedule button inside search box */}
               <button
                 onClick={() => navigate('/schedule-ride')}
-                className="bg-gray-100 rounded-xl p-4 hover:bg-gray-200 transition-colors"
+                className="px-4 py-4 hover:bg-gray-200 transition-colors border-l border-gray-200"
               >
                 <Calendar className="text-gray-600" size={20} />
               </button>
             </div>
+          </motion.div>
 
-            {/* Recent searches */}
+          {/* Recent searches - fade out as panel compresses */}
+          <motion.div
+            className="mt-4"
+            style={{ opacity: recentSearchesOpacity }}
+          >
             <ScrollableSection maxHeight="max-h-40">
               <div className="space-y-2">
                 {recentSearches.map((search, index) => (
@@ -227,17 +239,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ onSearchSelect }) => {
           </motion.div>
         </div>
       </DraggablePanel>
-
-      {/* Sticky search header when panel is compressed */}
-      {snapIndex <= 0 && (
-        <AnimatedSearchHeader
-          panelHeight={panelHeight}
-          maxHeight={maxPanelHeight}
-          minHeight={minPanelHeight}
-          onWhereToClick={handleWhereToClick}
-          onScheduleClick={() => navigate('/schedule-ride')}
-        />
-      )}
 
       <BottomNavigation />
     </div>
